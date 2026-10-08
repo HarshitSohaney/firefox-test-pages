@@ -1,0 +1,250 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Mini Window test page</title>
+    <style>
+      body {
+        margin: 0;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+      }
+
+      #header {
+        position: fixed;
+        inset-block-start: 0;
+        inset-inline: 0;
+        z-index: 2;
+        padding: 6px 12px;
+        background: #222;
+        color: #fff;
+        font: 12px/1.4 monospace;
+      }
+
+      main {
+        padding: 72px 12px 12px;
+      }
+
+      fieldset {
+        margin-block-end: 12px;
+      }
+
+      fieldset button {
+        margin: 2px;
+      }
+
+      #banner {
+        padding: 8px;
+        background: gold;
+      }
+
+      .sticky {
+        position: sticky;
+        inset-block-start: 40px;
+        z-index: 1;
+        padding: 6px;
+        background: rebeccapurple;
+        color: #fff;
+      }
+
+      .block {
+        height: 400px;
+        margin-block: 8px;
+        padding: 8px;
+        border: 2px solid #000;
+        box-sizing: border-box;
+      }
+
+      #crop-target {
+        width: 300px;
+        height: 200px;
+        background: tomato;
+        border: 4px solid #000;
+        box-sizing: border-box;
+      }
+
+      #full-height {
+        height: 100vh;
+        background: linear-gradient(teal, navy);
+        color: #fff;
+        padding: 8px;
+        box-sizing: border-box;
+      }
+
+      #wide {
+        width: 3000px;
+        height: 120px;
+        background: repeating-linear-gradient(
+          90deg,
+          #ccc 0 100px,
+          #888 100px 200px
+        );
+      }
+    </style>
+  </head>
+  <body>
+    <div id="header">
+      <div id="readout"></div>
+      <div id="status">Idle</div>
+    </div>
+
+    <main>
+      <div id="banner" hidden></div>
+
+      <fieldset>
+        <legend>Navigation</legend>
+        <label>
+          Delay (seconds):
+          <input id="delay" type="number" min="0" step="0.5" value="6" />
+        </label>
+        <small>
+          Over 5s counts as page-initiated (user activation expires after
+          dom.user_activation.transient.timeout).
+        </small>
+        <div>
+          <button id="nav-now">Navigate now</button>
+          <button id="nav-delay">Navigate after delay</button>
+          <button id="push-now">pushState now</button>
+          <button id="push-delay">pushState after delay</button>
+          <button id="replace-now">replaceState now</button>
+          <button id="reload-delay">Reload after delay</button>
+          <button id="cancel">Cancel pending</button>
+        </div>
+        <div>
+          <a id="link" href="?arrived=link">Plain link</a> ·
+          <a href="#block-10">Anchor to block 10</a> ·
+          <a href="?autonav=6">Reload with autonav=6</a>
+        </div>
+        <small>
+          URL params: <code>?autonav=N</code> navigates N seconds after load
+          with no click at all; <code>?arrived=…</code> shows where you came
+          from.
+        </small>
+      </fieldset>
+
+      <div class="sticky">Sticky bar (sticks under the fixed header)</div>
+
+      <h2>Crop target (300 x 200)</h2>
+      <div id="crop-target"></div>
+
+      <h2>100vh block</h2>
+      <div id="full-height">
+        Sized to the viewport height; reflows if the layout viewport height
+        changes.
+      </div>
+
+      <h2>Wide row (3000px, scrolls sideways)</h2>
+      <div id="wide"></div>
+
+      <div id="blocks"></div>
+    </main>
+
+    <script>
+      const delayInput = document.getElementById("delay");
+      const status = document.getElementById("status");
+      let pending = null;
+
+      function delayMs() {
+        return Math.max(0, Number(delayInput.value) || 0) * 1000;
+      }
+
+      function later(label, fn, ms = delayMs()) {
+        clearTimeout(pending);
+        let deadline = Date.now() + ms;
+        status.textContent = `${label} in ${(ms / 1000).toFixed(1)}s`;
+        pending = setTimeout(() => {
+          pending = null;
+          status.textContent = `${label} now`;
+          fn();
+        }, ms);
+        let tick = setInterval(() => {
+          if (!pending) {
+            clearInterval(tick);
+            return;
+          }
+          let left = Math.max(0, deadline - Date.now()) / 1000;
+          status.textContent = `${label} in ${left.toFixed(1)}s`;
+        }, 100);
+      }
+
+      const navigateTo = arrived => {
+        location.href = `?arrived=${arrived}`;
+      };
+      const pushTo = arrived => {
+        history.pushState(null, "", `?pushed=${arrived}`);
+        status.textContent = `pushState to ?pushed=${arrived}`;
+      };
+
+      document.getElementById("nav-now").onclick = () => navigateTo("button");
+      document.getElementById("nav-delay").onclick = () =>
+        later("Navigating", () => navigateTo("delayed"));
+      document.getElementById("push-now").onclick = () => pushTo("button");
+      document.getElementById("push-delay").onclick = () =>
+        later("pushState", () => pushTo("delayed"));
+      document.getElementById("replace-now").onclick = () => {
+        history.replaceState(null, "", "?replaced=1");
+        status.textContent = "replaceState to ?replaced=1";
+      };
+      document.getElementById("reload-delay").onclick = () =>
+        later("Reloading", () => location.reload());
+      document.getElementById("cancel").onclick = () => {
+        clearTimeout(pending);
+        pending = null;
+        status.textContent = "Cancelled";
+      };
+
+      const params = new URLSearchParams(location.search);
+      for (let key of ["arrived", "pushed", "replaced"]) {
+        if (params.has(key)) {
+          let banner = document.getElementById("banner");
+          banner.hidden = false;
+          banner.textContent = `Arrived via ${key}=${params.get(key)}`;
+        }
+      }
+      if (params.has("autonav")) {
+        later(
+          "Auto-navigating",
+          () => navigateTo("autonav"),
+          Number(params.get("autonav")) * 1000
+        );
+      }
+
+      const blocks = document.getElementById("blocks");
+      for (let i = 1; i <= 30; i++) {
+        let block = document.createElement("div");
+        block.className = "block";
+        block.id = `block-${i}`;
+        block.style.background = `hsl(${(i * 37) % 360} 70% 80%)`;
+        block.textContent = `Block ${i}`;
+        blocks.append(block);
+      }
+
+      function updateReadout() {
+        let vv = visualViewport;
+        let target = document.getElementById("crop-target");
+        let rect = target.getBoundingClientRect();
+        document.getElementById("readout").textContent =
+          `inner ${innerWidth}x${innerHeight} | ` +
+          `client ${document.documentElement.clientWidth}x${document.documentElement.clientHeight} | ` +
+          `scroll ${scrollX.toFixed(0)},${scrollY.toFixed(0)} | ` +
+          `visual ${vv.width.toFixed(0)}x${vv.height.toFixed(0)} @ ` +
+          `${vv.pageLeft.toFixed(0)},${vv.pageTop.toFixed(0)} x${vv.scale.toFixed(3)} | ` +
+          `crop target at ${(rect.left + scrollX).toFixed(0)},${(rect.top + scrollY).toFixed(0)} | ` +
+          `dpr ${devicePixelRatio}`;
+      }
+      for (let [target, type] of [
+        [window, "resize"],
+        [window, "scroll"],
+        [visualViewport, "resize"],
+        [visualViewport, "scroll"],
+      ]) {
+        target.addEventListener(type, updateReadout);
+      }
+      updateReadout();
+    </script>
+  </body>
+</html>
